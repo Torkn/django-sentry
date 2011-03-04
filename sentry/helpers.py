@@ -45,7 +45,8 @@ def construct_checksum(level=logging.ERROR, class_name='', traceback='', message
     checksum.update(class_name or '')
     if traceback:
         traceback = '\n'.join(traceback.split('\n')[:-3])
-    message = traceback or message
+    # Only the first line of the message contributes to the checksum
+    message = traceback or message.split('\n')[0]
     if isinstance(message, unicode):
         message = message.encode('utf-8', 'replace')
     checksum.update(message)
