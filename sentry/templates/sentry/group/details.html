@@ -30,7 +30,7 @@
             <dt>Last Seen:</dt>
             <dd>{{ group.last_seen|timesince }}</dd>
         </dl>
-        
+
         {% for html in group|get_widgets:request %}
             {{ html|safe }}
         {% endfor %}
@@ -44,11 +44,11 @@
                 <span class="last_seen">{{ group.last_seen|timesince }}</span>
                 <span class="status status-{{ group.status }}">{{ group.get_status_display }}</span>
                 <p class="message">
-                    <span class="tag tag-level">{{ group.get_level_display }}</span> 
-                    <span class="tag tag-logger">{{ group.logger }}</span> 
+                    <span class="tag tag-level">{{ group.get_level_display }}</span>
+                    <span class="tag tag-logger">{{ group.logger }}</span>
                     {% with group.get_version as version %}
                         {% if version %}
-                            <span class="tag tag-version">{{ version.0 }} {{ version.1 }}</span> 
+                            <span class="tag tag-version">{{ version.0 }} {{ version.1 }}</span>
                         {% endif %}
                     {% endwith %}
                     {% for tag in group|get_tags:request %}<span class="tag">{{ tag }}</span> {% endfor %}
@@ -67,18 +67,18 @@
                 <li{% if is_active %} class="active"{% endif %}><a href="{{ link }}">{{ label }}</a></li>
             {% endfor %}
         </ul>
-        
+
         {% block inner %}
             <div id="details">
                 {% if group.has_two_part_message %}
                     <h2>Full Message</h2>
                     <pre id="full-message">{{ group.message }}</pre>
                 {% endif %}
-                
+
                 {% if traceback %}
                     {{ traceback }}
                 {% endif %}
-                
+
                 {% with group|chart_data as chart_data %}
                     {% if chart_data %}
                     <script type="text/javascript">
@@ -202,7 +202,7 @@
                         {% endfor %}
                     </table>
                 </div>
-                
+
                 {% if version_data %}
                     <div id="versioninfo">
                         <h2>Module Versions</h2>

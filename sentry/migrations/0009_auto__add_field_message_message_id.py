@@ -7,13 +7,13 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-        
+
         # Adding field 'Message.message_id'
         db.add_column('sentry_message', 'message_id', self.gf('django.db.models.fields.CharField')(max_length=32, unique=True, null=True), keep_default=False)
 
 
     def backwards(self, orm):
-        
+
         # Deleting field 'Message.message_id'
         db.delete_column('sentry_message', 'message_id')
 

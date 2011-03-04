@@ -16,7 +16,7 @@ Once installed, update your settings.py and add ``sentry``, ``sentry.client``, `
 	    'django.contrib.auth',
 	    'django.contrib.contenttypes',
 	    'django.contrib.sessions',
-	    
+
 	    # don't forget to add the dependencies!
 	    'indexer',
 	    'paging',
@@ -48,7 +48,7 @@ Requirements
 ------------
 
 If you're installing it by hand, you'll need to fulfill the following requirements:
- 
+
  - **Django >= 1.2**
  - **django-indexer** (stores metadata indexes)
  - **django-paging**

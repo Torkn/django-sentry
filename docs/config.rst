@@ -13,19 +13,19 @@ To configure Sentry for use in a multi-server environment, first you'll want to 
 	  'sentry',
 	  'sentry.client',
 	]
-	
+
 	SENTRY_KEY = '0123456789abcde'
 
 And on each of your application servers, specify the URL of the Sentry server, add ``sentry.client`` to ``INSTALLED_APPS``, and specify the same key used in your Sentry server's settings::
 
 	# This should be the absolute URI of sentries store view
 	SENTRY_REMOTE_URL = 'http://your.sentry.server/sentry/store/'
-	
+
 	INSTALLED_APPS = [
 	  ...
 	  'sentry.client',
 	]
-	
+
 	SENTRY_KEY = '0123456789abcde'
 
 You may also specify an alternative timeout to the default (which is 5 seconds) for all outgoing logging requests (only works with python 2.6 and above)::
@@ -43,12 +43,12 @@ django-sentry supports the ability to directly tie into the ``logging`` module. 
 
 	import logging
 	from sentry.client.handlers import SentryHandler
-	
+
 	logger = logging.getLogger()
 	# ensure we havent already registered the handler
 	if SentryHandler not in map(lambda x: x.__class__, logger.handlers):
 	    logger.addHandler(SentryHandler())
-	
+
 	    # Add StreamHandler to sentry's default so you can catch missed exceptions
 	    logger = logging.getLogger('sentry.errors')
 	    logger.propagate = False
@@ -141,19 +141,19 @@ Sentry supports sending a message ID to your clients so that they can be tracked
 Another alternative method is rendering it within a template. By default, Sentry will attach request.sentry when it catches a Django exception. In our example, we will use this information to modify the default 500.html which is rendered, and show the user a case reference ID. The first step in doing this is creating a custom ``handler500`` in your ``urls.py`` file::
 
 	from django.conf.urls.defaults import *
-	
+
 	from django.views.defaults import page_not_found, server_error
-	
+
 	def handler500(request):
 	    """
 	    500 error handler which includes ``request`` in the context.
-	
+
 	    Templates: `500.html`
 	    Context: None
 	    """
 	    from django.template import Context, loader
 	    from django.http import HttpResponseServerError
-	
+
 	    t = loader.get_template('500.html') # You need to create a 500.html template.
 	    return HttpResponseServerError(t.render(Context({
 	        'request': request,

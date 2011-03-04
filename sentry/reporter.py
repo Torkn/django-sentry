@@ -84,7 +84,7 @@ class FakeRequest(object):
     COOKIES = {}
     FILES = {}
     url = ''
-    
+
     def __repr__(self):
         # Since this is called as part of error handling, we need to be very
         # robust against potentially malformed input.

@@ -5,11 +5,11 @@ from sentry.plugins import GroupActionProvider
 
 class ServerUrlsPanel(GroupActionProvider):
     """Adds additional support for showing information about urls including:
-    
+
     * A panel which shows all urls a message was seen on.
     * A sidebar module which shows the urls most actively seen on.
     """
-    
+
     title = 'URLs'
 
     def panels(self, request, panel_list, group):
@@ -18,6 +18,6 @@ class ServerUrlsPanel(GroupActionProvider):
 
     def view(self, request, group):
         return render_to_response('sentry/plugins/sentry_urls/index.html', locals())
-    
+
     def widget(self, request, group):
         return render_to_string('sentry/plugins/sentry_urls/widget.html', locals())

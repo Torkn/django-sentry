@@ -7,7 +7,7 @@ from sentry.conf import KEY
 from sentry import views
 from sentry.feeds import MessageFeed, SummaryFeed
 
-SENTRY_ROOT = os.path.dirname(__file__) 
+SENTRY_ROOT = os.path.dirname(__file__)
 
 urlpatterns = patterns('',
     url(r'^_media/(?P<path>.*)$', 'django.views.static.serve',
@@ -22,7 +22,7 @@ urlpatterns = patterns('',
 
     url(r'^jsapi/$', views.ajax_handler, name='sentry-ajax'),
     url(r'^store/$', views.store, name='sentry-store'),
-    
+
     # Normal views
 
     url(r'^login$', views.login, name='sentry-login'),

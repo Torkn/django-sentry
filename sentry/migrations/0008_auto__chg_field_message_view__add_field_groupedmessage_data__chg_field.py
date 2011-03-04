@@ -7,7 +7,7 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-        
+
         # Changing field 'Message.view'
         db.alter_column('sentry_message', 'view', self.gf('django.db.models.fields.CharField')(max_length=200, null=True))
 
@@ -22,7 +22,7 @@ class Migration(SchemaMigration):
 
 
     def backwards(self, orm):
-        
+
         # Changing field 'Message.view'
         db.alter_column('sentry_message', 'view', self.gf('django.db.models.fields.CharField')(max_length=255, null=True))
 

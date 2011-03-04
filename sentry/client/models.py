@@ -34,7 +34,7 @@ def sentry_exception_handler(request=None, **kwargs):
         extra = dict(
             request=request,
         )
-        
+
         message_id = get_client().create_from_exception(**extra)
     except Exception, exc:
         try:

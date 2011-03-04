@@ -27,7 +27,7 @@ class CreateIssueTest(TestCase):
         self.user.set_password('admin')
         self.user.save()
         self.client.login(username='admin', password='admin')
-        
+
         conf.REDMINE_URL = 'http://localhost:3000'
         conf.REDMINE_PROJECT_SLUG = 'sentry'
 
@@ -50,9 +50,9 @@ class CreateIssueTest(TestCase):
         }, follow=True)
         self.assertEquals(response.status_code, 200)
         self.assertTemplateUsed(response, 'sentry/group/details.html')
-        
+
         self.assertTrue(RedmineIssue.objects.filter(group=group).exists())
-        
+
         group = GroupedMessage.objects.get(pk=group.pk)
         self.assertTrue(group.data['redmine']['issue_id'] > 0)
 
@@ -68,8 +68,8 @@ class CreateIssueTest(TestCase):
         }, follow=True)
         self.assertEquals(response.status_code, 200)
         self.assertTemplateUsed(response, 'sentry/group/details.html')
-        
+
         self.assertTrue(RedmineIssue.objects.filter(group=group).exists())
-        
+
         group = GroupedMessage.objects.get(pk=group.pk)
         self.assertTrue(group.data['redmine']['issue_id'] > 0)

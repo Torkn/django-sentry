@@ -7,7 +7,7 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-        
+
         # Adding field 'Message.group'
         db.add_column('sentry_message', 'group', self.gf('django.db.models.fields.related.ForeignKey')(blank=True, related_name='message_set', null=True, to=orm['sentry.GroupedMessage']), keep_default=False)
 
@@ -16,7 +16,7 @@ class Migration(SchemaMigration):
 
 
     def backwards(self, orm):
-        
+
         # Deleting field 'Message.group'
         db.delete_column('sentry_message', 'group_id')
 

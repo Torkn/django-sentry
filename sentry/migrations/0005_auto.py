@@ -7,13 +7,13 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-        
+
         # Adding index on 'GroupedMessage', fields ['status']
         db.create_index('sentry_groupedmessage', ['status'])
 
 
     def backwards(self, orm):
-        
+
         # Removing index on 'GroupedMessage', fields ['status']
         db.delete_index('sentry_groupedmessage', ['status'])
 

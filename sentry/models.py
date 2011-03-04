@@ -48,7 +48,7 @@ class GzippedDictField(models.TextField):
     value is a dictionary.
     """
     __metaclass__ = models.SubfieldBase
- 
+
     def to_python(self, value):
         if isinstance(value, basestring) and value:
             value = pickle.loads(base64.b64decode(value).decode('zlib'))
@@ -59,7 +59,7 @@ class GzippedDictField(models.TextField):
     def get_prep_value(self, value):
         if value is None: return
         return base64.b64encode(pickle.dumps(transform(value)).encode('zlib'))
- 
+
     def value_to_string(self, obj):
         value = self._get_val_from_obj(obj)
         return self.get_db_prep_value(value)
@@ -90,7 +90,7 @@ class MessageBase(Model):
         return '\n'.join(self.traceback.split('\n')[-5:])
     shortened_traceback.short_description = _('traceback')
     shortened_traceback.admin_order_field = 'traceback'
-    
+
     def error(self):
         if self.message:
             message = smart_unicode(self.message)
@@ -109,7 +109,7 @@ class MessageBase(Model):
 
     def has_two_part_message(self):
         return '\n' in self.message.strip('\n')
-    
+
     def message_top(self):
         return self.message.split('\n')[0]
 
@@ -150,14 +150,14 @@ class GroupedMessage(MessageBase):
             return
 
         from django.db import connections
-        
+
         try:
             cursor = connections[db].cursor()
             cursor.execute("create index sentry_groupedmessage_score on sentry_groupedmessage ((%s))" % (cls.get_score_clause(),))
             cursor.close()
         except:
             transaction.rollback()
-        
+
     @classmethod
     def get_score_clause(cls):
         engine = get_db_engine()
@@ -170,7 +170,7 @@ class GroupedMessage(MessageBase):
     def mail_admins(self, request=None, fail_silently=True):
         if not conf.ADMINS:
             return
-        
+
         from django.core.mail import send_mail
         from django.template.loader import render_to_string
 
@@ -198,11 +198,11 @@ class GroupedMessage(MessageBase):
             'traceback': message.traceback,
             'link': link,
         })
-        
+
         send_mail(subject, body,
                   settings.SERVER_EMAIL, conf.ADMINS,
                   fail_silently=fail_silently)
-    
+
     @property
     def unique_urls(self):
         return self.message_set.filter(url__isnull=False)\
@@ -259,7 +259,7 @@ class Message(MessageBase):
     @models.permalink
     def get_absolute_url(self):
         return ('sentry-group-message', (self.group_id, self.pk), {})
-    
+
     def shortened_url(self):
         if not self.url:
             return _('no data')
@@ -269,7 +269,7 @@ class Message(MessageBase):
         return url
     shortened_url.short_description = _('url')
     shortened_url.admin_order_field = 'url'
-    
+
     def full_url(self):
         return self.data.get('url') or self.url
     full_url.short_description = _('url')
@@ -307,10 +307,10 @@ class FilterValue(models.Model):
         ('logger', _('logger')),
         ('site', _('site')),
     )
-    
+
     key = models.CharField(choices=FILTER_KEYS, max_length=32)
     value = models.CharField(max_length=200)
-    
+
     class Meta:
         unique_together = (('key', 'value'),)
 

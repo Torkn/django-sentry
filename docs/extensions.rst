@@ -74,14 +74,14 @@ For the technical, here's some further docs:
 If you wish to access these within your own views and models, you may do so via the standard model API::
 
 	from sentry.models import Message, GroupedMessage
-	
+
 	# Pull the last 10 unresolved errors.
 	GroupedMessage.objects.filter(status=0).order_by('-last_seen')[0:10]
 
 You can also record errors outside of handler if you want::
 
 	from sentry.client.models import client
-	
+
 	try:
 	    ...
 	except Exception, exc:
@@ -91,7 +91,7 @@ If you wish to log normal messages (useful for non-``logging`` integration)::
 
 	from sentry.client.models import client
 	import logging
-	
+
 	message_id = client.create_from_text('Message Message'[, level=logging.WARNING, url=None])
 
 Both the ``url`` and ``level`` parameters are optional. ``level`` should be one of the following:

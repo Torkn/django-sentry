@@ -14,9 +14,9 @@ from sentry import conf
 _FILTER_CACHE = None
 def get_filters():
     global _FILTER_CACHE
-    
+
     if _FILTER_CACHE is None:
-        
+
         filters = []
         for filter_ in conf.FILTERS:
             module_name, class_name = filter_.rsplit('.', 1)

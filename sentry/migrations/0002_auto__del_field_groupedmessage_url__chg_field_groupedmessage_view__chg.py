@@ -7,7 +7,7 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-        
+
         # Deleting field 'GroupedMessage.url'
         db.delete_column('sentry_groupedmessage', 'url')
 
@@ -19,7 +19,7 @@ class Migration(SchemaMigration):
 
 
     def backwards(self, orm):
-        
+
         # Adding field 'GroupedMessage.url'
         db.add_column('sentry_groupedmessage', 'url', self.gf('django.db.models.fields.URLField')(max_length=200, null=True, blank=True), keep_default=False)
 

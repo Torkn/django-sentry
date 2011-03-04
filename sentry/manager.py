@@ -24,7 +24,7 @@ class SentryManager(models.Manager):
 
     def from_kwargs(self, **kwargs):
         from sentry.models import Message, GroupedMessage, FilterValue
-        
+
         URL_MAX_LENGTH = Message._meta.get_field_by_name('url')[0].max_length
         now = datetime.datetime.now()
 
@@ -76,7 +76,7 @@ class SentryManager(models.Manager):
                 group.last_seen = now
                 group.times_seen += 1
                 signals.post_save.send(sender=GroupedMessage, instance=group, created=False)
-            else: 
+            else:
                 mail = True
             instance = Message.objects.create(
                 message_id=message_id,

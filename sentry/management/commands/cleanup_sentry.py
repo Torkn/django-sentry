@@ -11,7 +11,7 @@ class Command(BaseCommand):
         make_option('--days', action='store', dest='days'),
         make_option('--logger', action='store', dest='logger')
     )
-    
+
     help = 'Cleans up old entries in the log.'
 
     def handle(self, *args, **options):
@@ -19,10 +19,10 @@ class Command(BaseCommand):
         if options.get('days'): # options always contain the days key
             days = int(options['days'])
         ts = datetime.datetime.now() - datetime.timedelta(days=days)
-        
+
         base_kwargs = {}
         if options.get('logger'):
             base_kwargs['logger'] = options['logger']
-        
+
         GroupedMessage.objects.filter(last_seen__lte=ts, **base_kwargs).delete()
         Message.objects.filter(datetime__lte=ts, **base_kwargs).delete()

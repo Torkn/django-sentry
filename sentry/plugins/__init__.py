@@ -29,7 +29,7 @@ class ActionProvider:
 
     selected  Boolean indicating whether the action is the one
               currently being performed
-    
+
     ========  ========================================================
     """
     __metaclass__ = PluginMount
@@ -48,7 +48,7 @@ class GroupActionProvider:
     # TODO: should be able to specify modal support
 
     __metaclass__ = PluginMount
-    
+
     new_window = False
 
     @classmethod

@@ -7,7 +7,7 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-        
+
         # Adding model 'GroupedMessage'
         db.create_table('sentry_groupedmessage', (
             ('id', self.gf('django.db.models.fields.AutoField')(primary_key=True)),
@@ -49,7 +49,7 @@ class Migration(SchemaMigration):
 
 
     def backwards(self, orm):
-        
+
         # Deleting model 'GroupedMessage'
         db.delete_table('sentry_groupedmessage')
 

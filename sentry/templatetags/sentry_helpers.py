@@ -44,7 +44,7 @@ def num_digits(value):
 @register.filter
 def chart_data(group, max_days=90):
     hours = max_days*24
-    
+
     today = datetime.datetime.now().replace(microsecond=0, second=0, minute=0)
     min_date = today - datetime.timedelta(hours=hours)
 
@@ -84,7 +84,7 @@ def to_json(data):
 @register.simple_tag
 def sentry_version():
     import sentry
-    
+
     return sentry.VERSION
 
 @register.filter
