@@ -42,6 +42,9 @@
 
     <div id="requestinfo">
         <h2>More Information</h2>
+        {% if message.has_two_part_message %}
+        <pre>{{ message.message }}</pre>
+        {% endif %}
 
         <table>
             {% for k, v in json_data %}
