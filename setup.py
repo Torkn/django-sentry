@@ -19,7 +19,7 @@ class mytest(test):
 
 setup(
     name='django-sentry',
-    version='1.6.4',
+    version='1.6.5',
     author='David Cramer',
     author_email='dcramer@gmail.com',
     url='http://github.com/dcramer/django-sentry',
@@ -27,6 +27,7 @@ setup(
     packages=find_packages(),
     zip_safe=False,
     install_requires=[
+        'django',
         'django-paging>=0.2.2',
         'django-indexer==0.2.1',
         'uuid',
