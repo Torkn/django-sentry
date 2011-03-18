@@ -17,14 +17,15 @@ class mytest(test):
         # Upgrade().run(dist=True)
         # test.run(self, *args, **kwargs)
 
+
 setup(
     name='django-sentry',
-    version='1.6.5',
+    version='1.6.6',
     author='David Cramer',
     author_email='dcramer@gmail.com',
     url='http://github.com/dcramer/django-sentry',
     description = 'Exception Logging to a Database in Django',
-    packages=find_packages(),
+    packages=find_packages(exclude="example_project"),
     zip_safe=False,
     install_requires=[
         'django',
