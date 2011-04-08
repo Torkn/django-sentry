@@ -21,9 +21,9 @@ def is_dict(value):
 def with_priority(result_list, key='score'):
     if result_list:
         if isinstance(result_list[0], dict):
-            _get = lambda x, k: x[k]
+            _get = lambda x, k: x.get(k, 0)
         else:
-            _get = lambda x, k: getattr(x, k)
+            _get = lambda x, k: getattr(x, k, 0)
 
         min_, max_ = min([_get(r, key) for r in result_list]), max([_get(r, key) for r in result_list])
         mid = (max_ - min_) / 4

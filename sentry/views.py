@@ -110,6 +110,7 @@ def search(request):
     has_search = bool(conf.SEARCH_ENGINE)
     sort = request.GET.get('sort')
 
+    error_message = ''
     if query:
         if uuid_re.match(query):
             # Forward to message if it exists
@@ -120,13 +121,11 @@ def search(request):
             else:
                 return HttpResponseRedirect(message.get_absolute_url())
         elif not has_search:
-            return render_to_response('sentry/search.html', {
-                'message_list' : [],
-                'query' : query,
-                'sort' : sort,
-                'request' : request,
-                'error_message' : 'No search engines found.  You can specify a search engine with settings.SENTRY_SEARCH_ENGINE',
-                })
+            # We will just search the message field
+            # This will be very expensive for large GroupedMessage tables
+            # For small sites, this may be sufficient
+            message_list = GroupedMessage.objects.filter(message__icontains=query)
+            error_message = 'Warning: No search engine defined in settings.SENTRY_SEARCH_ENGINE'
         else:
             message_list = get_search_query_set(query)
     else:
@@ -144,6 +143,7 @@ def search(request):
         'query': query,
         'sort': sort,
         'request': request,
+        'error_message' : error_message,
     })
 
 @login_required
