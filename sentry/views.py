@@ -108,6 +108,7 @@ def search(request):
 
     query = request.GET.get('q')
     has_search = bool(conf.SEARCH_ENGINE)
+    sort = request.GET.get('sort')
 
     if query:
         if uuid_re.match(query):
@@ -119,13 +120,18 @@ def search(request):
             else:
                 return HttpResponseRedirect(message.get_absolute_url())
         elif not has_search:
-            return render_to_response('sentry/invalid_message_id.html')
+            return render_to_response('sentry/search.html', {
+                'message_list' : [],
+                'query' : query,
+                'sort' : sort,
+                'request' : request,
+                'error_message' : 'No search engines found.  You can specify a search engine with settings.SENTRY_SEARCH_ENGINE',
+                })
         else:
             message_list = get_search_query_set(query)
     else:
         message_list = GroupedMessage.objects.none()
 
-    sort = request.GET.get('sort')
     if sort == 'date':
         message_list = message_list.order_by('-last_seen')
     elif sort == 'new':

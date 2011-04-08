@@ -35,6 +35,8 @@
         </ul>
     {% endif %}
 
+    {% if error_message %}<p class="error">{{ error_message }}</p>{% endif %}
+
     <div class="clearfix">
         {{ message_list.paging }}
     </div>
