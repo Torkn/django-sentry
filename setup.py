@@ -2,25 +2,22 @@
 
 try:
     from setuptools import setup, find_packages
-    from setuptools.command.test import test
 except ImportError:
     from ez_setup import use_setuptools
     use_setuptools()
     from setuptools import setup, find_packages
-    from setuptools.command.test import test
 
-
-class mytest(test):
-    def run(self, *args, **kwargs):
-        from runtests import runtests
-        runtests()
-        # Upgrade().run(dist=True)
-        # test.run(self, *args, **kwargs)
-
+tests_require = [
+    'django',
+    'django-celery',
+    'south',
+    'django-haystack',
+    'whoosh',
+]
 
 setup(
     name='django-sentry',
-    version='1.6.6',
+    version='1.6.9.1',
     author='David Cramer',
     author_email='dcramer@gmail.com',
     url='http://github.com/dcramer/django-sentry',
@@ -28,14 +25,17 @@ setup(
     packages=find_packages(exclude="example_project"),
     zip_safe=False,
     install_requires=[
-        'django',
         'django-paging>=0.2.2',
         'django-indexer==0.2.1',
         'uuid',
     ],
-    test_suite = 'sentry.tests',
+    dependency_links=[
+        'https://github.com/disqus/django-haystack/tarball/master#egg=django-haystack',
+    ],
+    tests_require=tests_require,
+    extras_require={'test': tests_require},
+    test_suite='sentry.runtests.runtests',
     include_package_data=True,
-    cmdclass={"test": mytest},
     classifiers=[
         'Framework :: Django',
         'Intended Audience :: Developers',

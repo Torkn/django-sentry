@@ -19,12 +19,15 @@ def get_filters():
 
         filters = []
         for filter_ in conf.FILTERS:
+            if filter_.endswith('sentry.filters.SearchFilter'):
+                continue
             module_name, class_name = filter_.rsplit('.', 1)
             try:
                 module = __import__(module_name, {}, {}, class_name)
                 filter_ = getattr(module, class_name)
             except Exception:
-                logging.exception('Unable to import %s' % (filter_,))
+                logger = logging.getLogger('sentry.errors')
+                logger.exception('Unable to import %s' % (filter_,))
                 continue
             filters.append(filter_)
         _FILTER_CACHE = filters
