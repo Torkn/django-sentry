@@ -7,6 +7,11 @@ import datetime
 import logging
 import re
 import zlib
+import mimetypes
+import os.path
+import posixpath
+import stat
+import urllib
 
 from django.core.context_processors import csrf
 from django.core.urlresolvers import reverse
@@ -17,6 +22,8 @@ from django.template.loader import render_to_string
 from django.utils import simplejson
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_protect, csrf_exempt
+from django.utils.http import http_date
+from django.views.static import was_modified_since
 
 from sentry import conf
 from sentry.helpers import get_filters
@@ -394,13 +401,6 @@ def static_media(request, path):
     """
     Serve static files below a given point in the directory structure.
     """
-    from django.utils.http import http_date
-    from django.views.static import was_modified_since
-    import mimetypes
-    import os.path
-    import posixpath
-    import stat
-    import urllib
 
     document_root = os.path.join(conf.ROOT, 'static')
 
