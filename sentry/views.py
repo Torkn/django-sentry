@@ -426,6 +426,13 @@ def static_media(request, path):
         raise Http404('"%s" does not exist' % fullpath)
     # Respect the If-Modified-Since header.
     statobj = os.stat(fullpath)
+
+    # WARNING: Python 2.6.2 and earlier can crash here with an infinite
+    # recursion error when used in a multi-threaded environment, due to a
+    # race condition in mimetypes.guess_type.  Either upgrade python,
+    # or implement your own guess_type function.
+    # Ref: http://bugs.python.org/issue5853
+    #      Fixed in r72048
     mimetype = mimetypes.guess_type(fullpath)[0] or 'application/octet-stream'
     if not was_modified_since(request.META.get('HTTP_IF_MODIFIED_SINCE'),
                               statobj[stat.ST_MTIME], statobj[stat.ST_SIZE]):
