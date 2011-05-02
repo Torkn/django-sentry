@@ -14,11 +14,12 @@ import uuid
 from django.core.cache import cache
 from django.template import TemplateSyntaxError
 from django.template.loader import LoaderOrigin
+from django.utils import simplejson
 from django.views.debug import ExceptionReporter
 
 from sentry import conf
 from sentry.helpers import construct_checksum, varmap, transform, get_installed_apps, urlread, force_unicode, \
-                           get_versions
+                           get_versions, shorten
 
 logger = logging.getLogger('sentry.errors')
 
@@ -36,9 +37,15 @@ class SentryClient(object):
         if request:
             if not kwargs.get('data'):
                 kwargs['data'] = {}
+
+            if not request.POST and request.raw_post_data:
+                post_data = request.raw_post_data
+            else:
+                post_data = request.POST
+
             kwargs['data'].update(dict(
                 META=request.META,
-                POST=request.POST,
+                POST=post_data,
                 GET=request.GET,
                 COOKIES=request.COOKIES,
             ))
@@ -57,6 +64,12 @@ class SentryClient(object):
 
         versions = get_versions()
         kwargs['data']['__sentry__']['versions'] = versions
+
+        # Shorten lists/strings
+        for k, v in kwargs['data'].iteritems():
+            if k == '__sentry__':
+                continue
+            kwargs['data'][k] = shorten(v)
 
         if kwargs.get('view'):
             # get list of modules from right to left
@@ -126,16 +139,20 @@ class SentryClient(object):
 
         return message_id
 
+    def send_remote(self, url=None, data=None):
+        return urlread(url, post=data, timeout=conf.REMOTE_TIMEOUT)
+
     def send(self, **kwargs):
         "Sends the message to the server."
         if conf.REMOTE_URL:
             for url in conf.REMOTE_URL:
                 data = {
-                    'data': base64.b64encode(pickle.dumps(kwargs).encode('zlib')),
+                    'data': base64.b64encode(simplejson.dumps(kwargs).encode('zlib')),
+                    'format': 'json',
                     'key': conf.KEY,
                 }
                 try:
-                    urlread(url, post=data, timeout=conf.REMOTE_TIMEOUT)
+                    return self.send_remote(url=url, data=data)
                 except urllib2.HTTPError, e:
                     body = e.read()
                     logger.error('Unable to reach Sentry log server: %s (url: %%s, body: %%s)' % (e,), url, body,
@@ -198,12 +215,6 @@ class SentryClient(object):
             exc_info = sys.exc_info()
 
         exc_type, exc_value, exc_traceback = exc_info
-
-        def shorten(var):
-            var = transform(var)
-            if isinstance(var, basestring) and len(var) > 200:
-                var = var[:200] + '...'
-            return var
 
         reporter = ExceptionReporter(None, exc_type, exc_value, exc_traceback)
         frames = varmap(shorten, reporter.get_traceback_frames())

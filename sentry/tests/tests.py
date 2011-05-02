@@ -10,11 +10,12 @@ import logging
 import os.path
 import sys
 import threading
+import warnings
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core import mail
-from django.core.handlers.wsgi import WSGIRequest, WSGIHandler
+from django.core.handlers.wsgi import WSGIHandler
 from django.core.management import call_command
 from django.core.urlresolvers import reverse
 from django.core.signals import got_request_exception
@@ -83,7 +84,8 @@ def conditional_on_module(module):
             try:
                 __import__(module)
             except ImportError:
-                print "Skipping test: %s.%s" % (self.__class__.__name__, func.__name__)
+                warnings.warn("Skipping test: %s.%s" % (self.__class__.__name__, func.__name__), ImportWarning)
+                return lambda x, *a, **kw: None
             else:
                 return func(self, *args, **kwargs)
         return inner
@@ -705,6 +707,89 @@ class SentryTestCase(TestCase):
         self.assertTrue('baz' in last.data)
         self.assertEquals(last.data['baz'], 'bar')
 
+    def testRawPostData(self):
+        from sentry.reporter import FakeRequest
+
+        request = FakeRequest()
+        request.raw_post_data = '{"json": "string"}'
+
+        logger = logging.getLogger()
+
+        self.setUpHandler()
+
+        logger.error('This is a test %s', 'error', extra={
+            'request': request,
+            'data': {
+                'baz': 'bar',
+            }
+        })
+        self.assertEquals(Message.objects.count(), 1)
+        self.assertEquals(GroupedMessage.objects.count(), 1)
+        last = Message.objects.get()
+        self.assertEquals(last.logger, 'root')
+        self.assertEquals(last.level, logging.ERROR)
+        self.assertEquals(last.message, 'This is a test error')
+        self.assertTrue('POST' in last.data)
+        self.assertEquals(request.raw_post_data, last.data['POST'])
+
+    def testScoreUpdate(self):
+        self.assertRaises(Exception, self.client.get, reverse('sentry-raise-exc'))
+
+        self.assertEquals(GroupedMessage.objects.count(), 1)
+        group = GroupedMessage.objects.get()
+        self.assertTrue(group.score > 0, group.score)
+
+        # drop the score to ensure its getting re-set
+        group.score = 0
+        group.save()
+
+        self.assertRaises(Exception, self.client.get, reverse('sentry-raise-exc'))
+        self.assertEquals(GroupedMessage.objects.count(), 1)
+
+        group = GroupedMessage.objects.get()
+        self.assertTrue(group.score > 0, group.score)
+
+    def testShortenLists(self):
+        logger = logging.getLogger()
+
+        self.setUpHandler()
+
+        base_list = range(500)
+
+        logger.error('This is a test %s', 'error', extra={'data': {
+            'list': base_list,
+            'set': set(base_list),
+            'tuple': tuple(base_list),
+            'frozenset': frozenset(base_list),
+        }})
+        self.assertEquals(Message.objects.count(), 1)
+        self.assertEquals(GroupedMessage.objects.count(), 1)
+        last = Message.objects.get()
+
+        # test list length
+        self.assertTrue('list' in last.data)
+        self.assertEquals(len(last.data['list']), 52) # 20 + 2 extra ele
+        self.assertEquals(last.data['list'][-2], '...')
+        self.assertEquals(last.data['list'][-1], '(450 more elements)')
+
+        # test set length
+        self.assertTrue('set' in last.data)
+        self.assertEquals(len(last.data['set']), 52) # 20 + 2 extra ele
+        self.assertEquals(last.data['set'][-2], '...')
+        self.assertEquals(last.data['set'][-1], '(450 more elements)')
+
+        # test frozenset length
+        self.assertTrue('frozenset' in last.data)
+        self.assertEquals(len(last.data['frozenset']), 52) # 20 + 2 extra ele
+        self.assertEquals(last.data['frozenset'][-2], '...')
+        self.assertEquals(last.data['frozenset'][-1], '(450 more elements)')
+
+        # test tuple length
+        self.assertTrue('tuple' in last.data)
+        self.assertEquals(len(last.data['tuple']), 52) # 20 + 2 extra ele
+        self.assertEquals(last.data['tuple'][-2], '...')
+        self.assertEquals(last.data['tuple'][-1], '(450 more elements)')
+
 class SentryViewsTest(TestCase):
     urls = 'sentry.tests.urls'
     fixtures = ['sentry/tests/fixtures/views.json']
@@ -755,13 +840,13 @@ class SentryViewsTest(TestCase):
 
     def testDashboard(self):
         self.client.login(username='admin', password='admin')
-        resp = self.client.get(reverse('sentry'), follow=True)
+        resp = self.client.get(reverse('sentry') + '?sort=freq', follow=True)
         self.assertEquals(resp.status_code, 200)
         self.assertTemplateUsed(resp, 'sentry/index.html')
+        self.assertEquals(len(resp.context['message_list']), 4)
         group = resp.context['message_list'][0]
         self.assertEquals(group.times_seen, 7)
         self.assertEquals(group.class_name, 'AttributeError')
-        self.assertEquals(len(resp.context['message_list']), 4)
 
     def testGroup(self):
         self.client.login(username='admin', password='admin')
@@ -814,7 +899,7 @@ class RemoteSentryTest(TestCase):
             'data': 'hello world',
         })
         self.assertEquals(resp.status_code, 403)
-        self.assertEquals(resp.content, 'Bad data')
+        self.assertEquals(resp.content, 'Bad data decoding request (TypeError, Incorrect padding)')
 
     def testCorrectData(self):
         kwargs = {'message': 'hello', 'server_name': 'not_dcramer.local', 'level': 40, 'site': 'not_a_real_site'}
@@ -925,7 +1010,7 @@ class SentryMailTest(TestCase):
 
         self.assertTrue('Traceback (most recent call last):' in out.body)
         self.assertTrue("COOKIES:{'commenter_name': 'admin'," in out.body, out.body)
-        self.assertEquals(out.subject, 'Error (EXTERNAL IP): /group/1')
+        self.assertEquals(out.subject, '[Django] Error (EXTERNAL IP): /group/1')
 
     def test_mail_on_creation(self):
         conf.MAIL = True
@@ -940,7 +1025,7 @@ class SentryMailTest(TestCase):
 
         self.assertTrue('Traceback (most recent call last):' in out.body)
         self.assertTrue("<Request" in out.body)
-        self.assertEquals(out.subject, '[example.com] Error (EXTERNAL IP): /trigger-500')
+        self.assertEquals(out.subject, '[example.com] [Django] Error (EXTERNAL IP): /trigger-500')
 
     def test_mail_on_duplication(self):
         conf.MAIL = True
@@ -964,7 +1049,7 @@ class SentryMailTest(TestCase):
 
         self.assertTrue('Traceback (most recent call last):' in out.body)
         self.assertTrue("<Request" in out.body)
-        self.assertEquals(out.subject, '[example.com] Error (EXTERNAL IP): /trigger-500')
+        self.assertEquals(out.subject, '[example.com] [Django] Error (EXTERNAL IP): /trigger-500')
 
     def test_url_prefix(self):
         conf.URL_PREFIX = 'http://example.com'
@@ -1029,6 +1114,7 @@ class SentryClientTest(TestCase):
 
     def test_get_client(self):
         from sentry.client.log import LoggingSentryClient
+
         self.assertEquals(get_client().__class__, SentryClient)
         self.assertEquals(get_client(), get_client())
 
@@ -1059,8 +1145,10 @@ class SentryClientTest(TestCase):
         self.assertEquals(_foo[''].levelno, client.default_level)
         self.assertEquals(_foo[''].class_name, 'Exception')
 
+    @conditional_on_module('djcelery')
     def test_celery_client(self):
         from sentry.client.celery import CelerySentryClient
+
         self.assertEquals(get_client().__class__, SentryClient)
         self.assertEquals(get_client(), get_client())
 
@@ -1076,6 +1164,26 @@ class SentryClientTest(TestCase):
         self.assertEqual(message.message, 'view exception')
 
         conf.CLIENT = 'sentry.client.base.SentryClient'
+
+    # XXX: need to fix behavior with threads so this test works correctly
+    # def test_async_client(self):
+    #     from sentry.client.async import AsyncSentryClient
+    #
+    #     self.assertEquals(get_client().__class__, SentryClient)
+    #     self.assertEquals(get_client(), get_client())
+    #
+    #     conf.CLIENT = 'sentry.client.async.AsyncSentryClient'
+    #
+    #     self.assertEquals(get_client().__class__, AsyncSentryClient)
+    #     self.assertEquals(get_client(), get_client())
+    #
+    #     self.assertRaises(Exception, self.client.get, reverse('sentry-raise-exc'))
+    #
+    #     message = GroupedMessage.objects.get()
+    #     self.assertEqual(message.class_name, 'Exception')
+    #     self.assertEqual(message.message, 'view exception')
+    #
+    #     conf.CLIENT = 'sentry.client.base.SentryClient'
 
 class SentryManageTest(TestCase):
     fixtures = ['sentry/tests/fixtures/cleanup.json']
@@ -1093,6 +1201,7 @@ class SentryManageTest(TestCase):
 class SentrySearchTest(TestCase):
     urls = 'sentry.tests.urls'
 
+    @conditional_on_module('haystack')
     def test_build_index(self):
         from sentry.views import get_search_query_set
         logger.error('test search error')

@@ -8,7 +8,7 @@ except ImportError:
     from setuptools import setup, find_packages
 
 tests_require = [
-    'django',
+    'Django',
     'django-celery',
     'south',
     'django-haystack',
@@ -17,7 +17,7 @@ tests_require = [
 
 setup(
     name='django-sentry',
-    version='1.6.9.1',
+    version='1.7.3',
     author='David Cramer',
     author_email='dcramer@gmail.com',
     url='http://github.com/dcramer/django-sentry',
@@ -25,8 +25,9 @@ setup(
     packages=find_packages(exclude="example_project"),
     zip_safe=False,
     install_requires=[
-        'django-paging>=0.2.2',
-        'django-indexer>=0.2.1',
+        'django-paging>=0.2.4',
+        'django-indexer>=0.3.0',
+        'django-templatetag-sugar>=0.1.0',
         'uuid',
     ],
     dependency_links=[

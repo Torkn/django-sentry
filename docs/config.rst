@@ -8,8 +8,6 @@ To configure Sentry for use in a multi-server environment, first you'll want to 
 
 	INSTALLED_APPS = [
 	  ...
-	  'indexer',
-	  'paging',
 	  'sentry',
 	  'sentry.client',
 	]
@@ -85,6 +83,12 @@ be seen as the same message within Sentry::
 	logging.error('There was some %s error', 'crazy')
 	logging.error('There was some %s error', 'fun')
 	logging.error('There was some %s error', 1)
+
+Note that here we are describing a client/server interaction where
+both components are provided by django-sentry.  Other languages that
+provide a logging package that is comparable to the python ``logging``
+package may define a sentry handler.  Check the Integration with
+Sentry `Integration with Sentry <technical.html#integration-with-sentry>`_ paragraph.
 
 Integration with ``haystack`` (Search)
 --------------------------------------
@@ -211,6 +215,16 @@ name (defaults to ``sentry``).
 	    'sentry.client.celery',
 	)
 
+*****************
+AsyncSentryClient
+*****************
+
+Spawns a background thread within the process that will handle sending messages upstream.
+
+::
+
+	SENTRY_CLIENT = 'sentry.client.async.AsyncSentryClient'
+
 #############
 SENTRY_ADMINS
 #############
@@ -264,3 +278,16 @@ SENTRY_INCLUDE_PATHS
 ####################
 
 By default Sentry only looks at modules in INSTALLED_APPS for drilling down where an exception is located
+
+######################
+SENTRY_MAX_LENGTH_LIST
+######################
+
+The maximum number of items a list-like container should store. Defaults to 50.
+
+########################
+SENTRY_MAX_LENGTH_STRING
+########################
+
+The maximum characters of a string that should be stored. Defaults to 200.
+

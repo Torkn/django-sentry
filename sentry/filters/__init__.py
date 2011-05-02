@@ -88,10 +88,10 @@ class SentryFilter(object):
                                                      .order_by('value'))
 
     def get_query_set(self, queryset):
-        from indexer.models import Index
+        from sentry.models import MessageIndex
         kwargs = {self.column: self.get_value()}
         if self.column.startswith('data__'):
-            return Index.objects.get_for_queryset(queryset, **kwargs)
+            return MessageIndex.objects.get_for_queryset(queryset, **kwargs)
         return queryset.filter(**kwargs)
 
     def process(self, data):
@@ -153,3 +153,6 @@ class LevelFilter(SentryFilter):
 
     def get_choices(self):
         return SortedDict((str(k), v) for k, v in conf.LOG_LEVELS)
+
+    def get_query_set(self, queryset):
+        return queryset.filter(level__gte=self.get_value())
