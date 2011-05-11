@@ -1,22 +1,18 @@
-import warnings
+import os
+import re
 
-warnings.warn("The use of 'sentry.urls' is deprecated. Please use 'sentry.web.urls' instead.", DeprecationWarning)
+from django.conf.urls.defaults import *
 
-<<<<<<< HEAD
-from sentry.conf import KEY
-from sentry import views
-from sentry.feeds import MessageFeed, SummaryFeed
-
-SENTRY_ROOT = os.path.dirname(__file__)
+from sentry.conf.settings import KEY
+from sentry.web import views, feeds
 
 urlpatterns = patterns('',
-    # This path is also reflected in conf.STATIC_URL_PREFIX
     url(r'^_static/(?P<path>.*)$', views.static_media, name='sentry-media'),
 
     # Feeds
 
-    url(r'^feeds/%s/messages.xml$' % re.escape(KEY), MessageFeed(), name='sentry-feed-messages'),
-    url(r'^feeds/%s/summaries.xml$' % re.escape(KEY), SummaryFeed(), name='sentry-feed-summaries'),
+    url(r'^feeds/%s/messages.xml$' % re.escape(KEY), feeds.MessageFeed(), name='sentry-feed-messages'),
+    url(r'^feeds/%s/summaries.xml$' % re.escape(KEY), feeds.SummaryFeed(), name='sentry-feed-summaries'),
 
     # JS and API
 
@@ -36,6 +32,3 @@ urlpatterns = patterns('',
 
     url(r'^$', views.index, name='sentry'),
 )
-=======
-from sentry.web.urls import *
->>>>>>> upstream/master

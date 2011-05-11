@@ -1,16 +1,18 @@
+import hmac
 import logging
 import sys
-import urllib
-import urllib2
 import uuid
+import warnings
+from pprint import pformat
 from types import ClassType, TypeType
 
 import django
-from django.conf import settings
+from django.conf import settings as django_settings
 from django.utils.encoding import force_unicode
-from django.utils.hashcompat import md5_constructor
+from django.utils.hashcompat import md5_constructor, sha_constructor
 
-from sentry import conf
+import sentry
+from sentry.conf import settings
 
 _FILTER_CACHE = None
 def get_filters():
@@ -19,7 +21,7 @@ def get_filters():
     if _FILTER_CACHE is None:
 
         filters = []
-        for filter_ in conf.FILTERS:
+        for filter_ in settings.FILTERS:
             if filter_.endswith('sentry.filters.SearchFilter'):
                 continue
             module_name, class_name = filter_.rsplit('.', 1)
@@ -38,10 +40,10 @@ def get_filters():
 def get_db_engine(alias='default'):
     has_multidb = django.VERSION >= (1, 2)
     if has_multidb:
-        value = settings.DATABASES[alias]['ENGINE']
+        value = django_settings.DATABASES[alias]['ENGINE']
     else:
         assert alias == 'default', 'You cannot fetch a database engine other than the default on Django < 1.2'
-        value = settings.DATABASE_ENGINE
+        value = django_settings.DATABASE_ENGINE
     return value.rsplit('.', 1)[-1]
 
 def construct_checksum(level=logging.ERROR, class_name='', traceback='', message='', **kwargs):
@@ -72,6 +74,12 @@ def varmap(func, var, context=None):
     del context[objid]
     return ret
 
+def has_sentry_metadata(value):
+    try:
+        return callable(getattr(value, '__sentry__', None))
+    except:
+        return False
+
 def transform(value, stack=[], context=None):
     # TODO: make this extendable
     # TODO: include some sane defaults, like UUID
@@ -99,7 +107,7 @@ def transform(value, stack=[], context=None):
         except:
             ret = to_unicode(value)
     elif not isinstance(value, (ClassType, TypeType)) and \
-            callable(getattr(value, '__sentry__', None)):
+            has_sentry_metadata(value):
         ret = transform_rec(value.__sentry__())
     elif not isinstance(value, (int, bool)) and value is not None:
         # XXX: we could do transform(repr(value)) here
@@ -126,7 +134,7 @@ def get_installed_apps():
     Generate a list of modules in settings.INSTALLED_APPS.
     """
     out = set()
-    for app in settings.INSTALLED_APPS:
+    for app in django_settings.INSTALLED_APPS:
         out.add(app)
     return out
 
@@ -194,17 +202,9 @@ class cached_property(object):
             obj.__dict__[self.__name__] = value
         return value
 
-def urlread(url, get={}, post={}, headers={}, timeout=None):
-    req = urllib2.Request(url, urllib.urlencode(get), headers=headers)
-    try:
-        response = urllib2.urlopen(req, urllib.urlencode(post), timeout).read()
-    except:
-        response = urllib2.urlopen(req, urllib.urlencode(post)).read()
-    return response
-
 def get_versions(module_list=None):
     if not module_list:
-        module_list = settings.INSTALLED_APPS + ['django']
+        module_list = django_settings.INSTALLED_APPS + ['django']
 
     ext_module_list = set()
     for m in module_list:
@@ -234,11 +234,67 @@ def get_versions(module_list=None):
 
 def shorten(var):
     var = transform(var)
-    if isinstance(var, basestring) and len(var) > conf.MAX_LENGTH_STRING:
-        var = var[:conf.MAX_LENGTH_STRING] + '...'
-    elif isinstance(var, (list, tuple, set, frozenset)) and len(var) > conf.MAX_LENGTH_LIST:
+    if isinstance(var, basestring) and len(var) > settings.MAX_LENGTH_STRING:
+        var = var[:settings.MAX_LENGTH_STRING] + '...'
+    elif isinstance(var, (list, tuple, set, frozenset)) and len(var) > settings.MAX_LENGTH_LIST:
         # TODO: we should write a real API for storing some metadata with vars when
         # we get around to doing ref storage
         # TODO: when we finish the above, we should also implement this for dicts
-        var = list(var)[:conf.MAX_LENGTH_LIST] + ['...', '(%d more elements)' % (len(var) - conf.MAX_LENGTH_LIST,)]
+        var = list(var)[:settings.MAX_LENGTH_LIST] + ['...', '(%d more elements)' % (len(var) - settings.MAX_LENGTH_LIST,)]
     return var
+
+def is_float(var):
+    try:
+        float(var)
+    except ValueError:
+        return False
+    return True
+
+def get_signature(message, timestamp):
+    return hmac.new(settings.KEY, '%s %s' % (timestamp, message), sha_constructor).hexdigest()
+
+def get_auth_header(signature, timestamp, client):
+    return 'Sentry sentry_signature=%s, sentry_timestamp=%s, sentry_client=%s' % (
+        signature,
+        timestamp,
+        sentry.VERSION,
+    )
+
+def parse_auth_header(header):
+    return dict(map(lambda x: x.strip().split('='), header.split(' ', 1)[1].split(',')))
+
+class MockDjangoRequest(object):
+    GET = {}
+    POST = {}
+    META = {}
+    COOKIES = {}
+    FILES = {}
+    raw_post_data = ''
+    url = ''
+
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+    def __repr__(self):
+        # Since this is called as part of error handling, we need to be very
+        # robust against potentially malformed input.
+        try:
+            get = pformat(self.GET)
+        except:
+            get = '<could not parse>'
+        try:
+            post = pformat(self.POST)
+        except:
+            post = '<could not parse>'
+        try:
+            cookies = pformat(self.COOKIES)
+        except:
+            cookies = '<could not parse>'
+        try:
+            meta = pformat(self.META)
+        except:
+            meta = '<could not parse>'
+        return '<Request\nGET:%s,\nPOST:%s,\nCOOKIES:%s,\nMETA:%s>' % \
+            (get, post, cookies, meta)
+
+    def build_absolute_uri(self): return self.url

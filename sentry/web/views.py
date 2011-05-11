@@ -6,6 +6,8 @@ except ImportError:
 import datetime
 import logging
 import re
+import time
+import warnings
 import zlib
 import mimetypes
 import os.path
@@ -16,7 +18,8 @@ import urllib
 from django.core.context_processors import csrf
 from django.core.urlresolvers import reverse
 from django.http import HttpResponse, HttpResponseBadRequest, \
-    HttpResponseForbidden, HttpResponseRedirect, Http404, HttpResponseNotModified
+    HttpResponseForbidden, HttpResponseRedirect, Http404, HttpResponseNotModified, \
+    HttpResponseNotAllowed, HttpResponseGone
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.utils import simplejson
@@ -26,12 +29,12 @@ from django.views.decorators.csrf import csrf_protect, csrf_exempt
 from django.utils.http import http_date
 from django.views.static import was_modified_since
 
-from sentry import conf
-from sentry.helpers import get_filters
+from sentry.conf import settings
+from sentry.utils import get_filters, is_float, get_signature, parse_auth_header
 from sentry.models import GroupedMessage, Message
 from sentry.plugins import GroupActionProvider
 from sentry.templatetags.sentry_helpers import with_priority
-from sentry.reporter import ImprovedExceptionReporter
+from sentry.web.reporter import ImprovedExceptionReporter
 
 uuid_re = re.compile(r'^[a-z0-9]{32}$')
 
@@ -39,7 +42,7 @@ def render_to_response(template, context={}):
     from django.shortcuts import render_to_response
 
     context.update({
-        'has_search': bool(conf.SEARCH_ENGINE),
+        'has_search': bool(settings.SEARCH_ENGINE),
     })
     return render_to_response(template, context)
 
@@ -67,7 +70,7 @@ def get_search_query_set(query):
 
 def login_required(func):
     def wrapped(request, *args, **kwargs):
-        if not conf.PUBLIC:
+        if not settings.PUBLIC:
             if not request.user.is_authenticated():
                 return HttpResponseRedirect(reverse('sentry-login'))
             if not request.user.has_perm('sentry.can_view'):
@@ -115,8 +118,7 @@ def search(request):
         page = 1
 
     query = request.GET.get('q')
-    has_search = bool(conf.SEARCH_ENGINE)
-    sort = request.GET.get('sort')
+    has_search = bool(settings.SEARCH_ENGINE)
 
     error_message = ''
     if query:
@@ -139,6 +141,7 @@ def search(request):
     else:
         message_list = GroupedMessage.objects.none()
 
+    sort = request.GET.get('sort')
     if sort == 'date':
         message_list = message_list.order_by('-last_seen')
     elif sort == 'new':
@@ -358,17 +361,50 @@ def group_message_details(request, group_id, message_id):
 
 @csrf_exempt
 def store(request):
-    key = request.POST.get('key')
-    if key != conf.KEY:
-        return HttpResponseForbidden('Invalid credentials')
+    if request.method != 'POST':
+        return HttpResponseNotAllowed('This method only supports POST requests')
 
-    format = request.POST.get('format', 'pickle')
-    if format not in ('pickle', 'json'):
-        return HttpResponseForbidden('Invalid format')
+    if request.META.get('AUTHORIZATION', '').startswith('Sentry'):
+        auth_vars = parse_auth_header(request.META['AUTHORIZATION'])
 
-    data = request.POST.get('data')
-    if not data:
-        return HttpResponseForbidden('Missing data')
+        signature = auth_vars.get('sentry_signature')
+        timestamp = auth_vars.get('sentry_timestamp')
+
+        format = 'json'
+
+        data = request.raw_post_data
+
+        # Signed data packet
+        if signature and timestamp:
+            try:
+                timestamp = float(timestamp)
+            except ValueError:
+                return HttpResponseBadRequest('Invalid timestamp')
+
+            if timestamp < time.time() - 3600: # 1 hour
+                return HttpResponseGone('Message has expired')
+
+            sig_hmac = get_signature(data, timestamp)
+            if sig_hmac != signature:
+                return HttpResponseForbidden('Invalid signature')
+        else:
+            return HttpResponse('Unauthorized', status_code=401)
+    else:
+        data = request.POST.get('data')
+        if not data:
+            return HttpResponseBadRequest('Missing data')
+
+        format = request.POST.get('format', 'pickle')
+
+        if format not in ('pickle', 'json'):
+            return HttpResponseBadRequest('Invalid format')
+
+        # Legacy request (deprecated as of 2.0)
+        key = request.POST.get('key')
+
+        if key != settings.KEY:
+            warnings.warn('A client is sending the `key` parameter, which will be removed in Sentry 2.0', DeprecationWarning)
+            return HttpResponseForbidden('Invalid credentials')
 
     logger = logging.getLogger('sentry.server')
 
@@ -382,6 +418,7 @@ def store(request):
         # bug somewhere in the client's code.
         logger.exception('Bad data received')
         return HttpResponseForbidden('Bad data decoding request (%s, %s)' % (e.__class__.__name__, e))
+
     try:
         if format == 'pickle':
             data = pickle.loads(data)
@@ -395,6 +432,16 @@ def store(request):
 
     # XXX: ensure keys are coerced to strings
     data = dict((smart_str(k), v) for k, v in data.iteritems())
+
+    if 'timestamp' in data:
+        if is_float(data['timestamp']):
+            data['timestamp'] = datetime.datetime.fromtimestamp(float(data['timestamp']))
+        else:
+            if '.' in data['timestamp']:
+                format = '%Y-%m-%dT%H:%M:%S.%f'
+            else:
+                format = '%Y-%m-%dT%H:%M:%S'
+            data['timestamp'] = datetime.datetime.strptime(data['timestamp'], format)
 
     GroupedMessage.objects.from_kwargs(**data)
 
@@ -418,7 +465,7 @@ def static_media(request, path):
     Serve static files below a given point in the directory structure.
     """
 
-    document_root = os.path.join(conf.ROOT, 'static')
+    document_root = os.path.join(settings.ROOT, 'static')
 
     path = posixpath.normpath(urllib.unquote(path))
     path = path.lstrip('/')

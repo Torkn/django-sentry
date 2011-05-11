@@ -6,10 +6,10 @@ import warnings
 from django.db import models
 from django.db.models import signals
 
-from sentry import conf
-from sentry.helpers import construct_checksum, get_db_engine
+from sentry.conf import settings
+from sentry.utils import construct_checksum, get_db_engine
 
-assert not conf.DATABASE_USING or django.VERSION >= (1, 2), 'The `SENTRY_DATABASE_USING` setting requires Django >= 1.2'
+assert not settings.DATABASE_USING or django.VERSION >= (1, 2), 'The `SENTRY_DATABASE_USING` setting requires Django >= 1.2'
 
 logger = logging.getLogger('sentry.errors')
 
@@ -40,20 +40,20 @@ class SentryManager(models.Manager):
 
     def get_query_set(self):
         qs = super(SentryManager, self).get_query_set()
-        if conf.DATABASE_USING:
-            qs = qs.using(conf.DATABASE_USING)
+        if settings.DATABASE_USING:
+            qs = qs.using(settings.DATABASE_USING)
         return qs
 
     def from_kwargs(self, **kwargs):
         from sentry.models import Message, GroupedMessage, FilterValue
 
         URL_MAX_LENGTH = Message._meta.get_field_by_name('url')[0].max_length
-        now = datetime.datetime.now()
+        now = kwargs.pop('timestamp', None) or datetime.datetime.now()
 
         view = kwargs.pop('view', None)
         logger_name = kwargs.pop('logger', 'root')
         url = kwargs.pop('url', None)
-        server_name = kwargs.pop('server_name', conf.CLIENT)
+        server_name = kwargs.pop('server_name', settings.CLIENT)
         site = kwargs.pop('site', None)
         data = kwargs.pop('data', {}) or {}
         message_id = kwargs.pop('message_id', None)
@@ -77,13 +77,19 @@ class SentryManager(models.Manager):
             if 'module' in data.get('__sentry__', {}):
                 kwargs['data']['module'] = data['__sentry__']['module']
 
+            group_kwargs = kwargs.copy()
+            group_kwargs.update({
+                'last_seen': now,
+                'first_seen': now,
+            })
+
             group, created = GroupedMessage.objects.get_or_create(
                 view=view,
                 logger=logger_name,
                 checksum=checksum,
                 # we store some sample data for rendering
-                defaults=kwargs
-                )
+                defaults=group_kwargs
+            )
             kwargs.pop('data', None)
             if not created:
                 # HACK: maintain appeared state
@@ -104,6 +110,8 @@ class SentryManager(models.Manager):
                     score=ScoreClause(group),
                     )
                 mail = True
+
+
             instance = Message.objects.create(
                 message_id=message_id,
                 view=view,
@@ -114,6 +122,7 @@ class SentryManager(models.Manager):
                 site=site,
                 checksum=checksum,
                 group=group,
+                datetime=now,
                 **kwargs
                 )
             if server_name:

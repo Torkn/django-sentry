@@ -17,7 +17,7 @@ tests_require = [
 
 setup(
     name='django-sentry',
-    version='1.7.4',
+    version='1.8.0',
     author='David Cramer',
     author_email='dcramer@gmail.com',
     url='http://github.com/dcramer/django-sentry',
@@ -29,14 +29,22 @@ setup(
         'django-indexer>=0.3.0',
         'django-templatetag-sugar>=0.1.0',
         'uuid',
+        # python-daemon and eventlet are required to run the Sentry indepenent webserver
+        'python-daemon>=1.6',
+        'eventlet>=0.9.15',
     ],
     dependency_links=[
         'https://github.com/disqus/django-haystack/tarball/master#egg=django-haystack',
     ],
     tests_require=tests_require,
     extras_require={'test': tests_require},
-    test_suite='sentry.runtests.runtests',
+    test_suite='runtests.runtests',
     include_package_data=True,
+    entry_points = {
+        'console_scripts': [
+            'sentry = sentry.scripts.runner:main',
+        ],
+    },
     classifiers=[
         'Framework :: Django',
         'Intended Audience :: Developers',

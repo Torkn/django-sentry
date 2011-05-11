@@ -8,16 +8,18 @@ except ImportError:
 import logging
 import math
 
-from django.conf import settings
+from datetime import datetime
+
+from django.conf import settings as django_settings
 from django.db import models
 from django.db.models import Count
 from django.utils.encoding import smart_unicode
 from django.utils.translation import ugettext_lazy as _
 
-from sentry import conf
-from sentry.helpers import cached_property, construct_checksum, transform, get_filters
-from sentry.manager import GroupedMessageManager, SentryManager
-from sentry.reporter import FakeRequest
+from sentry.conf import settings
+from sentry.utils import cached_property, construct_checksum, transform, get_filters, \
+                         MockDjangoRequest
+from sentry.utils.manager import GroupedMessageManager, SentryManager
 
 from indexer.models import BaseIndex
 
@@ -65,7 +67,7 @@ class GzippedDictField(models.TextField):
 class MessageBase(Model):
     logger          = models.CharField(max_length=64, blank=True, default='root', db_index=True)
     class_name      = models.CharField(_('type'), max_length=128, blank=True, null=True, db_index=True)
-    level           = models.PositiveIntegerField(choices=conf.LOG_LEVELS, default=logging.ERROR, blank=True, db_index=True)
+    level           = models.PositiveIntegerField(choices=settings.LOG_LEVELS, default=logging.ERROR, blank=True, db_index=True)
     message         = models.TextField()
     traceback       = models.TextField(blank=True, null=True)
     view            = models.CharField(max_length=200, blank=True, null=True)
@@ -107,8 +109,8 @@ class MessageBase(Model):
 class GroupedMessage(MessageBase):
     status          = models.PositiveIntegerField(default=0, choices=STATUS_LEVELS, db_index=True)
     times_seen      = models.PositiveIntegerField(default=1, db_index=True)
-    last_seen       = models.DateTimeField(auto_now=True, db_index=True)
-    first_seen      = models.DateTimeField(auto_now_add=True, db_index=True)
+    last_seen       = models.DateTimeField(default=datetime.now, db_index=True)
+    first_seen      = models.DateTimeField(default=datetime.now, db_index=True)
 
     score           = models.IntegerField(default=0)
 
@@ -137,7 +139,7 @@ class GroupedMessage(MessageBase):
         return int(math.log(self.times_seen) * 600 + int(self.last_seen.strftime('%s')))
 
     def mail_admins(self, request=None, fail_silently=True):
-        if not conf.ADMINS:
+        if not settings.ADMINS:
             return
 
         from django.core.mail import send_mail
@@ -147,7 +149,7 @@ class GroupedMessage(MessageBase):
 
         obj_request = message.request
 
-        subject = '%sError (%s IP): %s' % (settings.EMAIL_SUBJECT_PREFIX, (obj_request.META.get('REMOTE_ADDR') in settings.INTERNAL_IPS and 'internal' or 'EXTERNAL'), obj_request.path)
+        subject = '%sError (%s IP): %s' % (django_settings.EMAIL_SUBJECT_PREFIX, (obj_request.META.get('REMOTE_ADDR') in django_settings.INTERNAL_IPS and 'internal' or 'EXTERNAL'), obj_request.path)
         if message.site:
             subject  = '[%s] %s' % (message.site, subject)
         try:
@@ -158,7 +160,7 @@ class GroupedMessage(MessageBase):
         if request:
             link = request.build_absolute_url(self.get_absolute_url())
         else:
-            link = '%s%s' % (conf.URL_PREFIX, self.get_absolute_url())
+            link = '%s%s' % (settings.URL_PREFIX, self.get_absolute_url())
 
         body = render_to_string('sentry/emails/error.txt', {
             'request_repr': request_repr,
@@ -169,7 +171,7 @@ class GroupedMessage(MessageBase):
         })
 
         send_mail(subject, body,
-                  settings.SERVER_EMAIL, conf.ADMINS,
+                  django_settings.SERVER_EMAIL, settings.ADMINS,
                   fail_silently=fail_silently)
 
     @property
@@ -207,7 +209,7 @@ class GroupedMessage(MessageBase):
 class Message(MessageBase):
     message_id      = models.CharField(max_length=32, null=True, unique=True)
     group           = models.ForeignKey(GroupedMessage, blank=True, null=True, related_name="message_set")
-    datetime        = models.DateTimeField(auto_now_add=True, db_index=True)
+    datetime        = models.DateTimeField(default=datetime.now, db_index=True)
     url             = models.URLField(verify_exists=False, null=True, blank=True)
     server_name     = models.CharField(max_length=128, db_index=True)
     site            = models.CharField(max_length=128, db_index=True, null=True)
@@ -246,13 +248,14 @@ class Message(MessageBase):
 
     @cached_property
     def request(self):
-        fake_request = FakeRequest()
-        fake_request.META = self.data.get('META') or {}
-        fake_request.GET = self.data.get('GET') or {}
-        fake_request.POST = self.data.get('POST') or {}
-        fake_request.FILES = self.data.get('FILES') or {}
-        fake_request.COOKIES = self.data.get('COOKIES') or {}
-        fake_request.url = self.url
+        fake_request = MockDjangoRequest(
+            META = self.data.get('META') or {},
+            GET = self.data.get('GET') or {},
+            POST = self.data.get('POST') or {},
+            FILES = self.data.get('FILES') or {},
+            COOKIES = self.data.get('COOKIES') or {},
+            url = self.url,
+        )
         if self.url:
             fake_request.path_info = '/' + self.url.split('/', 3)[-1]
         else:
