@@ -1044,13 +1044,8 @@ class SentryMailTest(TestCase):
     urls = 'sentry.tests.urls'
 
     def setUp(self):
-<<<<<<< HEAD
-        conf.ADMINS = ('%s@localhost' % getpass.getuser(),)
-
-=======
         settings.ADMINS = ('%s@localhost' % getpass.getuser(),)
 
->>>>>>> upstream/master
     def test_mail_admins(self):
         group = GroupedMessage.objects.get()
         self.assertEquals(len(mail.outbox), 0)
@@ -1064,13 +1059,8 @@ class SentryMailTest(TestCase):
         self.assertEquals(out.subject, '[Django] Error (EXTERNAL IP): /group/1')
 
     def test_mail_on_creation(self):
-<<<<<<< HEAD
-        conf.MAIL = True
-
-=======
         settings.MAIL = True
 
->>>>>>> upstream/master
         self.assertEquals(len(mail.outbox), 0)
         self.assertRaises(Exception, self.client.get, reverse('sentry-raise-exc'))
         self.assertEquals(len(mail.outbox), 1)
@@ -1084,13 +1074,8 @@ class SentryMailTest(TestCase):
         self.assertEquals(out.subject, '[example.com] [Django] Error (EXTERNAL IP): /trigger-500')
 
     def test_mail_on_duplication(self):
-<<<<<<< HEAD
-        conf.MAIL = True
-
-=======
         settings.MAIL = True
 
->>>>>>> upstream/master
         self.assertEquals(len(mail.outbox), 0)
         self.assertRaises(Exception, self.client.get, reverse('sentry-raise-exc'))
         self.assertEquals(len(mail.outbox), 1)
@@ -1124,15 +1109,6 @@ class SentryMailTest(TestCase):
 
 class SentryHelpersTest(TestCase):
     def test_get_db_engine(self):
-<<<<<<< HEAD
-        from sentry.helpers import get_db_engine
-        _databases = getattr(settings, 'DATABASES', {}).copy()
-        _engine = settings.DATABASE_ENGINE
-
-        settings.DATABASE_ENGINE = ''
-        settings.DATABASES['default'] = {'ENGINE': 'blah.sqlite3'}
-
-=======
         from sentry.utils import get_db_engine
         _databases = getattr(django_settings, 'DATABASES', {}).copy()
         _engine = django_settings.DATABASE_ENGINE
@@ -1140,7 +1116,6 @@ class SentryHelpersTest(TestCase):
         django_settings.DATABASE_ENGINE = ''
         django_settings.DATABASES['default'] = {'ENGINE': 'blah.sqlite3'}
 
->>>>>>> upstream/master
         self.assertEquals(get_db_engine(), 'sqlite3')
 
         django_settings.DATABASE_ENGINE = 'mysql'
@@ -1150,15 +1125,9 @@ class SentryHelpersTest(TestCase):
         django_settings.DATABASES['default'] = {'ENGINE': 'blah.mysql'}
 
         self.assertEquals(get_db_engine(), 'mysql')
-<<<<<<< HEAD
-
-        settings.DATABASES = _databases
-        settings.DATABASE_ENGINE = _engine
-=======
 
         django_settings.DATABASES = _databases
         django_settings.DATABASE_ENGINE = _engine
->>>>>>> upstream/master
 
     def test_transform_handles_gettext_lazy(self):
         from sentry.utils import transform
@@ -1184,37 +1153,16 @@ class SentryClientTest(TestCase):
     urls = 'sentry.tests.urls'
 
     def setUp(self):
-<<<<<<< HEAD
-        self._client = conf.CLIENT
-
-    def tearDown(self):
-        conf.CLIENT = self._client
-
-=======
         self._client = settings.CLIENT
 
     def tearDown(self):
         settings.CLIENT = self._client
 
->>>>>>> upstream/master
     def test_get_client(self):
         from sentry.client.log import LoggingSentryClient
 
         self.assertEquals(get_client().__class__, SentryClient)
         self.assertEquals(get_client(), get_client())
-<<<<<<< HEAD
-
-        conf.CLIENT = 'sentry.client.log.LoggingSentryClient'
-
-        self.assertEquals(get_client().__class__, LoggingSentryClient)
-        self.assertEquals(get_client(), get_client())
-
-        conf.CLIENT = 'sentry.client.base.SentryClient'
-
-    def test_logging_client(self):
-        conf.CLIENT = 'sentry.client.log.LoggingSentryClient'
-
-=======
 
         settings.CLIENT = 'sentry.client.log.LoggingSentryClient'
 
@@ -1226,7 +1174,6 @@ class SentryClientTest(TestCase):
     def test_logging_client(self):
         settings.CLIENT = 'sentry.client.log.LoggingSentryClient'
 
->>>>>>> upstream/master
         client = get_client()
 
         _foo = {'': None}
@@ -1270,15 +1217,9 @@ class SentryClientTest(TestCase):
     #
     #     self.assertEquals(get_client().__class__, SentryClient)
     #     self.assertEquals(get_client(), get_client())
-<<<<<<< HEAD
-    #
-    #     conf.CLIENT = 'sentry.client.async.AsyncSentryClient'
-    #
-=======
     #
     #     settings.CLIENT = 'sentry.client.async.AsyncSentryClient'
     #
->>>>>>> upstream/master
     #     self.assertEquals(get_client().__class__, AsyncSentryClient)
     #     self.assertEquals(get_client(), get_client())
     #
@@ -1287,27 +1228,11 @@ class SentryClientTest(TestCase):
     #     message = GroupedMessage.objects.get()
     #     self.assertEqual(message.class_name, 'Exception')
     #     self.assertEqual(message.message, 'view exception')
-<<<<<<< HEAD
-    #
-    #     conf.CLIENT = 'sentry.client.base.SentryClient'
-=======
     #
     #     settings.CLIENT = 'sentry.client.base.SentryClient'
->>>>>>> upstream/master
 
 class SentryCommandTest(TestCase):
     fixtures = ['sentry/tests/fixtures/cleanup.json']
-<<<<<<< HEAD
-
-    def test_cleanup_sentry(self):
-        from sentry.management.commands.cleanup_sentry import Command
-
-        self.assertEquals(Message.objects.count(), 10)
-
-        command = Command()
-        command.handle(days=1)
-
-=======
 
     def test_cleanup(self):
         from sentry.scripts.runner import cleanup
@@ -1316,7 +1241,6 @@ class SentryCommandTest(TestCase):
 
         cleanup(days=1)
 
->>>>>>> upstream/master
         self.assertEquals(Message.objects.count(), 0)
 
 class SentrySearchTest(TestCase):
