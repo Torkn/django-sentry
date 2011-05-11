@@ -30,8 +30,8 @@ setup(
         'django-templatetag-sugar>=0.1.0',
         'uuid',
         # python-daemon and eventlet are required to run the Sentry indepenent webserver
-        'python-daemon>=1.6',
-        'eventlet>=0.9.15',
+        #'python-daemon>=1.6',
+        #'eventlet>=0.9.15',
     ],
     dependency_links=[
         'https://github.com/disqus/django-haystack/tarball/master#egg=django-haystack',
