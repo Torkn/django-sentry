@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 import eventlet
+import errno
+import imp
 import os
 import os.path
 import sys
@@ -11,24 +13,58 @@ from django.core.management import call_command
 from eventlet import wsgi
 from optparse import OptionParser
 from sentry import VERSION
-from sentry.wsgi import application
+
+def settings_from_file(filename, silent=False):
+    """
+    Configures django settings from an arbitrary (non sys.path) filename.
+    """
+    mod = imp.new_module('config')
+    mod.__file__ = filename
+    try:
+        execfile(filename, mod.__dict__)
+    except IOError, e:
+        if silent and e.errno in (errno.ENOENT, errno.EISDIR):
+            return False
+        e.strerror = 'Unable to load configuration file (%s)' % e.strerror
+        raise
+
+    tuple_settings = ("INSTALLED_APPS", "TEMPLATE_DIRS")
+
+    if not django_settings.configured:
+        django_settings.configure()
+
+    for setting in dir(mod):
+        if setting == setting.upper():
+            setting_value = getattr(mod, setting)
+            if setting in tuple_settings and type(setting_value) == str:
+                setting_value = (setting_value,) # In case the user forgot the comma.
+            setattr(django_settings, setting, setting_value)
 
 class SentryServer(DaemonRunner):
     pidfile_timeout = 10
     start_message = u"started with pid %(pid)d"
 
     def __init__(self, host=None, port=None, pidfile=None,
-                 logfile=None):
+                 logfile=None, daemonize=False, debug=False):
         from sentry.conf import settings
 
         if not logfile:
             logfile = settings.WEB_LOG_FILE
 
-        self.daemon_context = DaemonContext()
+        logfile = os.path.realpath(logfile)
+        pidfile = os.path.realpath(pidfile or settings.WEB_PID_FILE)
+
+        if daemonize:
+            detach_process = True
+        else:
+            detach_process = False
+
+        self.daemon_context = DaemonContext(detach_process=detach_process)
         self.daemon_context.stdout = open(logfile, 'w+')
         self.daemon_context.stderr = open(logfile, 'w+', buffering=0)
 
-        self.pidfile = make_pidlockfile(pidfile or settings.WEB_PID_FILE, self.pidfile_timeout)
+        self.debug = debug
+        self.pidfile = make_pidlockfile(pidfile, self.pidfile_timeout)
 
         self.daemon_context.pidfile = self.pidfile
 
@@ -40,11 +76,27 @@ class SentryServer(DaemonRunner):
 
     def execute(self, action):
         self.action = action
-        self.do_action()
+
+        # Upgrade needs to happen before forking
+        upgrade()
+
+        if self.daemon_context.detach_process is False and self.action == 'start':
+            # HACK:
+            self.run()
+        else:
+            self.do_action()
 
     def run(self):
-        upgrade()
-        wsgi.server(eventlet.listen((self.host, self.port)), application)
+        from sentry.wsgi import application
+        def inner_run():
+            wsgi.server(eventlet.listen((self.host, self.port)), application)
+
+        if self.debug:
+            from django.utils import autoreload
+            autoreload.main(inner_run)
+        else:
+            inner_run()
+
 
 def cleanup(days=30, logger=None, site=None, server=None):
     from sentry.models import GroupedMessage, Message
@@ -69,13 +121,13 @@ def cleanup(days=30, logger=None, site=None, server=None):
         qs.filter(logger=logger)
     qs.delete()
 
-def upgrade():
+def upgrade(interactive=True):
     from sentry.conf import settings
 
-    call_command('syncdb', database=settings.DATABASE_USING or 'default', interactive=False)
+    call_command('syncdb', database=settings.DATABASE_USING or 'default', interactive=interactive)
 
     if 'south' in django_settings.INSTALLED_APPS:
-        call_command('migrate', database=settings.DATABASE_USING or 'default', interactive=False)
+        call_command('migrate', database=settings.DATABASE_USING or 'default', interactive=interactive)
 
 def main():
     command_list = ('start', 'stop', 'restart', 'cleanup', 'upgrade')
@@ -94,6 +146,8 @@ def main():
         parser.add_option('--host', metavar='HOSTNAME')
         parser.add_option('--port', type=int, metavar='PORT')
         parser.add_option('--daemon', action='store_true', default=False, dest='daemonize')
+        parser.add_option('--no-daemon', action='store_false', default=False, dest='daemonize')
+        parser.add_option('--debug', action='store_true', default=False, dest='debug')
         parser.add_option('--pidfile', dest='pidfile')
         parser.add_option('--logfile', dest='logfile')
     elif args[1] == 'stop':
@@ -111,20 +165,28 @@ def main():
 
     (options, args) = parser.parse_args()
 
-    if options.config:
-        os.environ['DJANGO_SETTINGS_MODULE'] = options.config
-
-    # TODO: we should attempt to discover settings modules
-
+    # Install default server values
     if not django_settings.configured:
         os.environ['DJANGO_SETTINGS_MODULE'] = 'sentry.conf.server'
+
+    if options.config:
+        # assumed to be a file
+        settings_from_file(options.config)
+    else:
+        config_path = os.path.expanduser(os.path.join('~', '.sentry', 'sentry.conf.py'))
+        if os.path.exists(config_path):
+            settings_from_file(config_path)
+
+    if getattr(options, 'debug', False):
+        django_settings.DEBUG = True
 
     if args[0] == 'upgrade':
         upgrade()
 
     elif args[0] == 'start':
         app = SentryServer(host=options.host, port=options.port,
-                             pidfile=options.pidfile, logfile=options.logfile)
+                           pidfile=options.pidfile, logfile=options.logfile,
+                           daemonize=options.daemonize, debug=options.debug)
         app.execute(args[0])
 
     elif args[0] == 'restart':

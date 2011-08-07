@@ -73,9 +73,17 @@ PUBLIC = False
 MAX_LENGTH_LIST = 50
 MAX_LENGTH_STRING = 200
 
+EMAIL_SUBJECT_PREFIX = ''
+
+INTERNAL_IPS = set()
+
+SERVER_EMAIL = 'root@localhost'
+
+LOGIN_URL = None
+
 ## The following settings refer to the built-in webserver
 
 WEB_HOST = 'localhost'
 WEB_PORT = 9000
-WEB_LOG_FILE = '/var/log/sentry.log'
-WEB_PID_FILE = '/var/run/sentry.pid'
+WEB_LOG_FILE = os.path.join(ROOT, 'sentry.log')
+WEB_PID_FILE = os.path.join(ROOT, 'sentry.pid')

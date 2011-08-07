@@ -1,8 +1,4 @@
 import base64
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
 import datetime
 import logging
 import re
@@ -22,7 +18,6 @@ from django.http import HttpResponse, HttpResponseBadRequest, \
     HttpResponseNotAllowed, HttpResponseGone
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
-from django.utils import simplejson
 from django.utils.encoding import smart_str
 from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_protect, csrf_exempt
@@ -31,20 +26,31 @@ from django.views.static import was_modified_since
 
 from sentry.conf import settings
 from sentry.utils import get_filters, is_float, get_signature, parse_auth_header
+from sentry.utils.compat import pickle
 from sentry.models import GroupedMessage, Message
 from sentry.plugins import GroupActionProvider
 from sentry.templatetags.sentry_helpers import with_priority
+from sentry.utils import json
 from sentry.web.reporter import ImprovedExceptionReporter
 
 uuid_re = re.compile(r'^[a-z0-9]{32}$')
 
-def render_to_response(template, context={}):
+def iter_data(obj):
+    for k, v in obj.data.iteritems():
+        if k.startswith('_') or k in ['url']:
+            continue
+        yield k, v
+
+def render_to_response(template, context={}, status=200):
     from django.shortcuts import render_to_response
 
     context.update({
         'has_search': bool(settings.SEARCH_ENGINE),
     })
-    return render_to_response(template, context)
+
+    response = render_to_response(template, context)
+    response.status_code = status
+    return response
 
 def get_search_query_set(query):
     from haystack.query import SearchQuerySet
@@ -72,9 +78,9 @@ def login_required(func):
     def wrapped(request, *args, **kwargs):
         if not settings.PUBLIC:
             if not request.user.is_authenticated():
-                return HttpResponseRedirect(reverse('sentry-login'))
+                return HttpResponseRedirect(settings.LOGIN_URL or reverse('sentry-login'))
             if not request.user.has_perm('sentry.can_view'):
-                return HttpResponseRedirect(reverse('sentry-login'))
+                return render_to_response('missing_permissions.html', status=400)
         return func(request, *args, **kwargs)
     wrapped.__doc__ = func.__doc__
     wrapped.__name__ = func.__name__
@@ -112,11 +118,6 @@ def logout(request):
 
 @login_required
 def search(request):
-    try:
-        page = int(request.GET.get('p', 1))
-    except (TypeError, ValueError):
-        page = 1
-
     query = request.GET.get('q')
     has_search = bool(settings.SEARCH_ENGINE)
 
@@ -127,7 +128,10 @@ def search(request):
             try:
                 message = Message.objects.get(message_id=query)
             except Message.DoesNotExist:
-                pass
+                if not has_search:
+                    return render_to_response('sentry/invalid_message_id.html')
+                else:
+                    message_list = get_search_query_set(query)
             else:
                 return HttpResponseRedirect(message.get_absolute_url())
         elif not has_search:
@@ -207,9 +211,10 @@ def index(request):
 def ajax_handler(request):
     op = request.REQUEST.get('op')
 
-    if op == 'notification':
+    def notification(request):
         return render_to_response('sentry/partial/_notification.html', request.GET)
-    elif op == 'poll':
+
+    def poll(request):
         filters = []
         for filter_ in get_filters():
             filters.append(filter_(request))
@@ -247,7 +252,11 @@ def ajax_handler(request):
                 'priority': p,
             }) for m, p in with_priority(message_list[0:15])]
 
-    elif op == 'resolve':
+        response = HttpResponse(json.dumps(data))
+        response['Content-Type'] = 'application/json'
+        return response
+
+    def resolve(request):
         gid = request.REQUEST.get('gid')
         if not gid:
             return HttpResponseForbidden()
@@ -270,12 +279,26 @@ def ajax_handler(request):
                 }).strip(),
                 'count': m.times_seen,
             }) for m in [group]]
+
+        response = HttpResponse(json.dumps(data))
+        response['Content-Type'] = 'application/json'
+        return response
+
+    def clear(request):
+        GroupedMessage.objects.all().update(status=1)
+
+        if not request.is_ajax():
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER') or reverse('sentry'))
+
+        data = []
+        response = HttpResponse(json.dumps(data))
+        response['Content-Type'] = 'application/json'
+        return response
+
+    if op in ['notification','poll','resolve', 'clear']:
+        return locals()[op](request)
     else:
         return HttpResponseBadRequest()
-
-    response = HttpResponse(simplejson.dumps(data))
-    response['Content-Type'] = 'application/json'
-    return response
 
 @login_required
 def group(request, group_id):
@@ -305,17 +328,17 @@ def group(request, group_id):
         traceback = mark_safe('<pre>%s</pre>' % (group.traceback,))
         version_data = None
 
-    def iter_data(obj):
-        for k, v in obj.data.iteritems():
-            if k.startswith('_') or k in ['url']:
-                continue
-            yield k, v
+    else:
+        traceback = None
+        version_data = None
 
-    json_data = iter_data(obj)
-
-    page = 'details'
-
-    return render_to_response('sentry/group/details.html', locals())
+    return render_to_response('sentry/group/details.html', {
+        'page': 'details',
+        'group': group,
+        'json_data': iter_data(obj),
+        'traceback': traceback,
+        'version_data': version_data,
+    })
 
 @login_required
 def group_message_list(request, group_id):
@@ -323,9 +346,11 @@ def group_message_list(request, group_id):
 
     message_list = group.message_set.all().order_by('-datetime')
 
-    page = 'messages'
-
-    return render_to_response('sentry/group/message_list.html', locals())
+    return render_to_response('sentry/group/message_list.html', {
+        'group': group,
+        'message_list': message_list,
+        'page': 'messages',
+    })
 
 @login_required
 def group_message_details(request, group_id, message_id):
@@ -344,28 +369,28 @@ def group_message_details(request, group_id, message_id):
 
         reporter = ImprovedExceptionReporter(message.request, exc_type, exc_value, frames, message.data['__sentry__'].get('template'))
         traceback = mark_safe(reporter.get_traceback_html())
+
     elif group.traceback:
         traceback = mark_safe('<pre>%s</pre>' % (group.traceback,))
 
-    def iter_data(obj):
-        for k, v in obj.data.iteritems():
-            if k.startswith('_') or k in ['url']:
-                continue
-            yield k, v
+    else:
+        traceback = None
 
-    json_data = iter_data(message)
-
-    page = 'messages'
-
-    return render_to_response('sentry/group/message.html', locals())
+    return render_to_response('sentry/group/message.html', {
+        'page': 'messages',
+        'group': group,
+        'message': message,
+        'json_data': iter_data(message),
+        'traceback': traceback,
+    })
 
 @csrf_exempt
 def store(request):
     if request.method != 'POST':
         return HttpResponseNotAllowed('This method only supports POST requests')
 
-    if request.META.get('AUTHORIZATION', '').startswith('Sentry'):
-        auth_vars = parse_auth_header(request.META['AUTHORIZATION'])
+    if request.META.get('HTTP_AUTHORIZATION', '').startswith('Sentry'):
+        auth_vars = parse_auth_header(request.META['HTTP_AUTHORIZATION'])
 
         signature = auth_vars.get('sentry_signature')
         timestamp = auth_vars.get('sentry_timestamp')
@@ -423,7 +448,7 @@ def store(request):
         if format == 'pickle':
             data = pickle.loads(data)
         elif format == 'json':
-            data = simplejson.loads(data)
+            data = json.loads(data)
     except Exception, e:
         # This error should be caught as it suggests that there's a
         # bug somewhere in the client's code.
@@ -433,15 +458,26 @@ def store(request):
     # XXX: ensure keys are coerced to strings
     data = dict((smart_str(k), v) for k, v in data.iteritems())
 
-    if 'timestamp' in data:
+    if'timestamp' in data:
         if is_float(data['timestamp']):
-            data['timestamp'] = datetime.datetime.fromtimestamp(float(data['timestamp']))
-        else:
+            try:
+                data['timestamp'] = datetime.datetime.fromtimestamp(float(data['timestamp']))
+            except:
+                logger.exception('Failed reading timestamp')
+                del data['timestamp']
+        elif not isinstance(data['timestamp'], datetime.datetime):
             if '.' in data['timestamp']:
                 format = '%Y-%m-%dT%H:%M:%S.%f'
             else:
                 format = '%Y-%m-%dT%H:%M:%S'
-            data['timestamp'] = datetime.datetime.strptime(data['timestamp'], format)
+            if 'Z' in data['timestamp']:
+                # support GMT market, but not other timestamps
+                format += 'Z'
+            try:
+                data['timestamp'] = datetime.datetime.strptime(data['timestamp'], format)
+            except:
+                logger.exception('Failed reading timestamp')
+                del data['timestamp']
 
     GroupedMessage.objects.from_kwargs(**data)
 

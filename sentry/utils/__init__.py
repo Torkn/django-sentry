@@ -1,14 +1,18 @@
 import hmac
 import logging
+try:
+    import pkg_resources
+except ImportError:
+    pkg_resources = None
 import sys
 import uuid
-import warnings
 from pprint import pformat
 from types import ClassType, TypeType
 
 import django
 from django.conf import settings as django_settings
 from django.utils.encoding import force_unicode
+from django.utils.functional import Promise
 from django.utils.hashcompat import md5_constructor, sha_constructor
 
 import sentry
@@ -76,24 +80,25 @@ def varmap(func, var, context=None):
 
 def has_sentry_metadata(value):
     try:
-        return callable(getattr(value, '__sentry__', None))
+        return callable(value.__getattribute__("__sentry__"))
     except:
         return False
 
 def transform(value, stack=[], context=None):
     # TODO: make this extendable
-    # TODO: include some sane defaults, like UUID
-    # TODO: dont coerce strings to unicode, leave them as strings
     if context is None:
         context = {}
+
     objid = id(value)
     if objid in context:
         return '<...>'
+
     context[objid] = 1
+    transform_rec = lambda o: transform(o, stack + [value], context)
+
     if any(value is s for s in stack):
         ret = 'cycle'
-    transform_rec = lambda o: transform(o, stack + [value], context)
-    if isinstance(value, (tuple, list, set, frozenset)):
+    elif isinstance(value, (tuple, list, set, frozenset)):
         ret = type(value)(transform_rec(o) for o in value)
     elif isinstance(value, uuid.UUID):
         ret = repr(value)
@@ -103,15 +108,25 @@ def transform(value, stack=[], context=None):
         ret = to_unicode(value)
     elif isinstance(value, str):
         try:
-            ret = str(value)
+            ret = str(value.decode('utf-8').encode('utf-8'))
         except:
             ret = to_unicode(value)
     elif not isinstance(value, (ClassType, TypeType)) and \
             has_sentry_metadata(value):
         ret = transform_rec(value.__sentry__())
+    elif isinstance(value, Promise):
+        # EPIC HACK
+        # handles lazy model instances (which are proxy values that dont easily give you the actual function)
+        pre = value.__class__.__name__[1:]
+        value = getattr(value, '%s__func' % pre)(*getattr(value, '%s__args' % pre), **getattr(value, '%s__kw' % pre))
+        return transform(value)
     elif not isinstance(value, (int, bool)) and value is not None:
-        # XXX: we could do transform(repr(value)) here
-        ret = to_unicode(value)
+        try:
+            ret = transform(repr(value))
+        except:
+            # It's common case that a model's __unicode__ definition may try to query the database
+            # which if it was not cleaned up correctly, would hit a transaction aborted exception
+            ret = u'<BadRepr: %s>' % type(value)
     else:
         ret = value
     del context[objid]
@@ -225,8 +240,18 @@ def get_versions(module_list=None):
             version = app.VERSION
         elif hasattr(app, '__version__'):
             version = app.__version__
+        elif pkg_resources:
+            # pull version from pkg_resources if distro exists
+            try:
+                version = pkg_resources.get_distribution(module_name).version
+            except pkg_resources.DistributionNotFound:
+                continue
         else:
             continue
+
+        if not version:
+            continue
+
         if isinstance(version, (list, tuple)):
             version = '.'.join(str(o) for o in version)
         versions[module_name] = version
