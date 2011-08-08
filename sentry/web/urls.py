@@ -24,8 +24,6 @@ def handler500(request):
     return HttpResponseServerError(t.render(Context(context)))
 
 urlpatterns = patterns('',
-    url(r'^_static/(?P<path>.*)$', views.static_media, name='sentry-media'),
-
     # Feeds
 
     url(r'^feeds/%s/messages.xml$' % re.escape(KEY), feeds.MessageFeed(), name='sentry-feed-messages'),
